@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Context7 Documentation Assistant",
-  description: "AI-powered documentation lookup for any library or framework",
+  title: "c0ntex (context)",
+  description: "AI-powered documentation assistant for any library or framework",
 };
 
 export default function RootLayout({

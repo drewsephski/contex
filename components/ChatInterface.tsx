@@ -42,6 +42,7 @@ export default function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [sessionStart] = useState(new Date());
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -79,16 +80,11 @@ export default function ChatInterface() {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
+    setIsStreaming(false);
 
-    // Create placeholder for assistant message
+    // Generate assistant message ID once
     const assistantMessageId = (Date.now() + 1).toString();
-    const assistantMessage: Message = {
-      id: assistantMessageId,
-      role: "assistant",
-      content: "",
-      timestamp: new Date(),
-    };
-    setMessages((prev) => [...prev, assistantMessage]);
+    let hasCreatedMessage = false;
 
     try {
       const response = await fetch("/chat/api", {
@@ -105,6 +101,7 @@ export default function ChatInterface() {
       if (!reader) throw new Error("No response body");
 
       let accumulatedContent = "";
+      let isFirstChunk = true;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -113,28 +110,55 @@ export default function ChatInterface() {
         const chunk = decoder.decode(value, { stream: true });
         accumulatedContent += chunk;
 
-        // Update the assistant message with new content
+        // Only create assistant message when we have actual meaningful content
+        if (isFirstChunk && accumulatedContent.length > 0 && /\S/.test(accumulatedContent)) {
+          const assistantMessage: Message = {
+            id: assistantMessageId,
+            role: "assistant",
+            content: accumulatedContent,
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+          setIsStreaming(true);
+          isFirstChunk = false;
+          hasCreatedMessage = true;
+        } else if (hasCreatedMessage) {
+          // Update existing assistant message with new content
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: accumulatedContent }
+                : msg
+            )
+          );
+        }
+      }
+    } catch {
+      // If error occurs after message was created, update it
+      if (hasCreatedMessage) {
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMessageId
-              ? { ...msg, content: accumulatedContent }
+              ? {
+                  ...msg,
+                  content: "Request failed. Check your connection and retry.",
+                }
               : msg
           )
         );
+      } else {
+        // If error occurs before message was created, create an error message
+        const errorMessage: Message = {
+          id: assistantMessageId,
+          role: "assistant",
+          content: "Request failed. Check your connection and retry.",
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
       }
-    } catch {
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMessageId
-            ? {
-                ...msg,
-                content: "Request failed. Check your connection and retry.",
-              }
-            : msg
-        )
-      );
     } finally {
       setIsLoading(false);
+      setIsStreaming(false);
     }
   };
 
@@ -1079,7 +1103,7 @@ export default function ChatInterface() {
               <span className="status-pip" />
             </div>
             <div>
-              <div className="header-title">Context7 Agent</div>
+              <div className="header-title">C0NTEX</div>
               <div className="header-subtitle">Documentation Intelligence</div>
             </div>
           </div>
@@ -1222,7 +1246,7 @@ export default function ChatInterface() {
                   </div>
                 ))}
 
-                {isLoading && messages[messages.length - 1]?.content === "" && (
+                {isLoading && !isStreaming && (
                   <div className="loading-row">
                     <div className="avatar-wrap assistant">
                       <Bot style={{ color: "var(--accent-primary)" }} />
@@ -1295,7 +1319,7 @@ export default function ChatInterface() {
             <div className="input-footer">
               <div className="footer-left">
                 <div className="footer-dot" />
-                <span className="footer-text">Context7 · OpenRouter</span>
+                <span className="footer-text">c0ntex · OpenRouter</span>
               </div>
               <span className="footer-hint">
                 <kbd className="kbd">↵</kbd> send ·{" "}
